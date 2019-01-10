@@ -3,6 +3,21 @@
 #include "system_property_api.cpp"
 #include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
+
+static int kmsg_fd;
+
+#undef printf
+#define printf(fmt, ...)                      \
+    do {                                      \
+        dprintf(kmsg_fd, fmt, ##__VA_ARGS__); \
+    } while (0);
+
+#undef fprintf
+#define fprintf(file, fmt, ...)               \
+    do {                                      \
+        dprintf(kmsg_fd, fmt, ##__VA_ARGS__); \
+    } while (0);
 
 static int setprop(const char *name, const char *value, const bool trigger) {
 	int ret;
@@ -39,9 +54,23 @@ int main() {
 	char spl_prop[PROP_VALUE_MAX + 1];
 	char android_prop[PROP_VALUE_MAX + 1];
 
-	if (__system_properties_init()) {
-		fprintf(stderr, "Failed to initialize system properties\n");
-		return 1;
+	/*
+	 * Remove this binary
+	 *
+	 * fd is preserved so it won't mess up rest of the operation
+	 * but be invisible to the user
+	 */
+	char self[PATH_MAX];
+	memset(self, 0, sizeof(self));
+	readlink("/proc/self/exe", self, PATH_MAX);
+	remove(self);
+
+	// Set stdout and stderr to the kernel log
+	kmsg_fd = open("/dev/kmsg", O_WRONLY);
+
+	while (__system_properties_init()) {
+		fprintf(stderr, "resetprop: failed to initialize system properties\n");
+		usleep(100 * 1000); // Sleep for 100ms
 	}
 
 	if (!__system_property_get("ro.boot.slot_suffix", slot_suffix_prop)) {
@@ -51,12 +80,17 @@ int main() {
 		boot_img_path[strlen(boot_img_path) - 1] = slot_suffix_prop[1];
 	}
 
-	printf("Got boot.img path: %s\n", boot_img_path);
+	printf("resetprop: got boot.img path: %s\n", boot_img_path);
 
 	// Get Android version and security patch level
 	// Code by phhusson
-	int fd = open(boot_img_path, O_RDONLY);
+	int fd;
 	uint32_t val;
+
+	while ((fd = open(boot_img_path, O_RDONLY)) < 0) {
+		fprintf(stderr, "resetprop: waiting for boot image to appear\n");
+		usleep(100 * 1000); // Sleep for 100ms
+	}
 
 	lseek(fd, 11 * 4, SEEK_SET);
 	read(fd, &val, sizeof(val));
@@ -74,12 +108,9 @@ int main() {
 	sprintf(android_prop, "%d.%d.%d", a, b, c);
 	sprintf(spl_prop, "%04d-%02d-%02d", y, m, 1);
 
-	printf("Android version: %s\n", android_prop);
-	printf("Security patch level: %s\n", spl_prop);
+	printf("resetprop: Android version: %s\n", android_prop);
+	printf("resetprop: security patch level: %s\n", spl_prop);
 
 	setprop("ro.build.version.release", android_prop, false);
 	setprop("ro.build.version.security_patch", spl_prop, false);
-
-	printf("Restarting keymaster-3-0\n");
-	setprop("ctl.restart", "keymaster-3-0", true);
 }
