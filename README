@@ -1,0 +1,5 @@
+Portable(?) resetprop extracted from Magisk.
+
+This resetprop is unable to change persist properties.
+
+Full credit goes to nkk71 and topjohnwu.
