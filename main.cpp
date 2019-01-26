@@ -50,9 +50,16 @@ static int setprop(const char *name, const char *value, const bool trigger) {
 
 int main() {
 	char boot_img_path[] = "/dev/block/bootdevice/by-name/boot__";
+	char fastboot_prop[PROP_VALUE_MAX + 1];
 	char slot_suffix_prop[PROP_VALUE_MAX + 1];
 	char spl_prop[PROP_VALUE_MAX + 1];
 	char android_prop[PROP_VALUE_MAX + 1];
+
+	int fd;
+	uint32_t val;
+
+	int android, a, b, c;
+	int spl, y, m;
 
 	/*
 	 * Remove this binary
@@ -73,6 +80,16 @@ int main() {
 		usleep(100 * 1000); // Sleep for 100ms
 	}
 
+	if (__system_property_get("ro.boot.mode", fastboot_prop)) {
+		if (!strcmp(fastboot_prop, "fastboot")) {
+			printf("resetprop: booting from fastboot, use 9.0.0 and 2025-12\n");
+			a = 9; b = 0; c = 0;
+			y = 2025; m = 12;
+
+			goto end;
+		}
+	}
+
 	if (!__system_property_get("ro.boot.slot_suffix", slot_suffix_prop)) {
 		// Assume A-only device
 		boot_img_path[strlen(boot_img_path) - 2] = '\0';
@@ -84,9 +101,6 @@ int main() {
 
 	// Get Android version and security patch level
 	// Code by phhusson
-	int fd;
-	uint32_t val;
-
 	while ((fd = open(boot_img_path, O_RDONLY)) < 0) {
 		fprintf(stderr, "resetprop: waiting for boot image to appear\n");
 		usleep(100 * 1000); // Sleep for 100ms
@@ -96,15 +110,16 @@ int main() {
 	read(fd, &val, sizeof(val));
 	close(fd); // No longer used
 
-	int android = val >> 11;
-	int a = android >> 14;
-	int b = (android >> 7) & 0x7f;
-	int c = android & 0x7f;
+	android = val >> 11;
+	a = android >> 14;
+	b = (android >> 7) & 0x7f;
+	c = android & 0x7f;
 
-	int spl = val & 0x7ff;
-	int y = 2000 + (spl >> 4);
-	int m = spl & 0xf;
+	spl = val & 0x7ff;
+	y = 2000 + (spl >> 4);
+	m = spl & 0xf;
 
+end:
 	sprintf(android_prop, "%d.%d.%d", a, b, c);
 	sprintf(spl_prop, "%04d-%02d-%02d", y, m, 1);
 
