@@ -49,8 +49,10 @@ static int setprop(const char *name, const char *value, const bool trigger) {
 }
 
 int main() {
-	const char spl_prop[] = "2025-12-01";
-	const char android_prop[] = "9.0.0";
+	char boot_img_path[] = "/dev/block/bootdevice/by-name/boot__";
+	char slot_suffix_prop[PROP_VALUE_MAX + 1];
+	char spl_prop[PROP_VALUE_MAX + 1];
+	char android_prop[PROP_VALUE_MAX + 1];
 
 	/*
 	 * Remove this binary
@@ -70,6 +72,41 @@ int main() {
 		fprintf(stderr, "resetprop: failed to initialize system properties\n");
 		usleep(100 * 1000); // Sleep for 100ms
 	}
+
+	if (!__system_property_get("ro.boot.slot_suffix", slot_suffix_prop)) {
+		// Assume A-only device
+		boot_img_path[strlen(boot_img_path) - 2] = '\0';
+	} else {
+		boot_img_path[strlen(boot_img_path) - 1] = slot_suffix_prop[1];
+	}
+
+	printf("resetprop: got boot.img path: %s\n", boot_img_path);
+
+	// Get Android version and security patch level
+	// Code by phhusson
+	int fd;
+	uint32_t val;
+
+	while ((fd = open(boot_img_path, O_RDONLY)) < 0) {
+		fprintf(stderr, "resetprop: waiting for boot image to appear\n");
+		usleep(100 * 1000); // Sleep for 100ms
+	}
+
+	lseek(fd, 11 * 4, SEEK_SET);
+	read(fd, &val, sizeof(val));
+	close(fd); // No longer used
+
+	int android = val >> 11;
+	int a = android >> 14;
+	int b = (android >> 7) & 0x7f;
+	int c = android & 0x7f;
+
+	int spl = val & 0x7ff;
+	int y = 2000 + (spl >> 4);
+	int m = spl & 0xf;
+
+	sprintf(android_prop, "%d.%d.%d", a, b, c);
+	sprintf(spl_prop, "%04d-%02d-%02d", y, m, 1);
 
 	printf("resetprop: Android version: %s\n", android_prop);
 	printf("resetprop: security patch level: %s\n", spl_prop);
