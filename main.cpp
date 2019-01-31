@@ -5,6 +5,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#define YEAR 2019
+#define MONTH 1
+
 static int kmsg_fd;
 
 #undef printf
@@ -84,7 +87,7 @@ int main() {
 		if (!strcmp(fastboot_prop, "fastboot")) {
 			printf("resetprop: booting from fastboot, use 9.0.0 and 2025-12\n");
 			a = 9; b = 0; c = 0;
-			y = 2025; m = 12;
+			y = YEAR; m = MONTH;
 
 			goto end;
 		}
